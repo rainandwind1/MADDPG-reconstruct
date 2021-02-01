@@ -6,6 +6,7 @@ import numpy as np
 import random
 import argparse
 import os
+import math
 from model import *
 
 SCENAION_NAME = 'simple_tag'    # choose scenario for training
@@ -51,6 +52,58 @@ def single_cross(chro1, chro2):
                     ind_cr = random.randint(0, W1.shape[0] - 1)
                     W1[ind_cr] = W2[ind_cr]
     return chro1
+
+def mutate_inplace(self, chro):
+    mut_strength = 0.1
+    num_mutation_frac = 0.05
+    super_mut_strength = 10
+    super_mut_prob = 0.05
+    reset_prob = super_mut_prob + 0.02
+
+    num_params = len(list(chro.parameters()))
+    prob = np.random.uniform(0, 1, num_params) * 2
+    
+    for i, param in enumerate(chro.parameters()):
+        # weight
+        W = param.data
+        if len(W.shape) == 2:
+            num_weights = W.shape[0] * W.shape[1]
+            s_prob = prob[i]
+
+            if random.random() < s_prob:
+                num_mutations = random.randint(0, int(math.ceil(num_mutation_frac * num_weights)))
+                for _ in range(num_mutations):
+                    ind_dim1 = random.randint(0, W.shape[0] - 1)
+                    ind_dim2 = random.randint(0, W.shape[1] - 1)
+                    random_num = random.random()
+
+                    if random_num < super_mut_prob:
+                        W[ind_dim1, ind_dim2] += random.gauss(0, super_mut_prob * W[ind_dim1, ind_dim2])
+                    elif random_num < reset_prob:
+                        W[ind_dim1, ind_dim2] = random.gauss(0, 0.1)
+                    else:
+                        W[ind_dim1, ind_dim2] += random.gauss(0, mut_strength * W[ind_dim1, ind_dim2])
+                    # Regularization hard limit
+					# W[ind_dim1, ind_dim2] = self.regularize_weight(W[ind_dim1, ind_dim2], self.weight_clamp)
+        # bias
+        elif len(W.shape) == 1:
+            num_weights = W.shape[0]
+            s_prob = prob[i]
+
+            if random.random() < s_prob:
+                num_mutations = random.randint(0, int(math.ceil(num_mutation_frac * num_weights)))
+                for _ in range(num_mutations):
+                    ind_dim = random.randint(0, W.shape[0] - 1)
+                    random_num = random.random()
+
+                    if random_num < super_mut_prob:
+                        W[ind_dim] += random.gauss(0, super_mut_prob * W[ind_dim])
+                    elif random_num < reset_prob:
+                        W[ind_dim] = random.gauss(0, 0.1)
+                    else:
+                        W[ind_dim] += random.gauss(0, mut_strength * W[ind_dim])
+                    # Regularization hard limit
+					# W[ind_dim] = self.regularize_weight(W[ind_dim], self.weight_clamp)
 
 
 # 环境交互
@@ -135,7 +188,7 @@ if __name__ == "__main__":
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     ELITES_NUM = 3
     M = 8
-    RENDER_FLAG = False
+    RENDER_FLAG = True
     AGENT_NUM = 4
     BUFFER_SIZE = 32
     MUTATION_PROB = 0.9
