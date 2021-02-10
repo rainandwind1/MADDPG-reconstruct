@@ -88,7 +88,7 @@ class DDPG(nn.Module):
 
     def get_action(self, inputs, vec = False):
         policy_op = self.get_policy(inputs)
-        noise = torch.rand_like(policy_op)
+        noise = torch.rand_like(policy_op).to(self.device)
         action = F.softmax(policy_op - torch.log(-torch.log(noise)), -1)        # 限制范围  合法动作
         return action.data.numpy() if not vec else action
 
@@ -97,8 +97,8 @@ class MADDPG(nn.Module):
     def __init__(self, args):
         super(MADDPG, self).__init__()
         self.state_size, self.obs_size, self.joint_action_size, self.action_size, self.n_agents, self.lr, self.device = args
-        self.agent_models = [DDPG(args = (i, self.state_size, self.obs_size[i], self.joint_action_size, self.action_size[i], self.lr, self.device)) for i in range(self.n_agents)]
-        self.target_models = [DDPG(args = (i, self.state_size, self.obs_size[i], self.joint_action_size, self.action_size[i], self.lr, self.device)) for i in range(self.n_agents)]
+        self.agent_models = [DDPG(args = (i, self.state_size, self.obs_size[i], self.joint_action_size, self.action_size[i], self.lr, self.device)).to(self.device) for i in range(self.n_agents)]
+        self.target_models = [DDPG(args = (i, self.state_size, self.obs_size[i], self.joint_action_size, self.action_size[i], self.lr, self.device)).to(self.device) for i in range(self.n_agents)]
         self.copy_weight()
 
     def copy_weight(self):
