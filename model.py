@@ -109,10 +109,10 @@ class Policy(nn.Module):
         policy_loss.backward()
         self.optimizer.step()
 
-        for target, model in zip(self.parameters(), target_policy_ls.policy_team[self.name].parameters()):
-            target = toi * target + (1 - toi) * target
+        for model, target in zip(self.parameters(), target_policy_ls.policy_team[self.name].parameters()):
+            target.data.copy_(toi * model.data + (1 - toi) * target.data)
         for target, model in zip(target_critic.parameters(), critic.parameters()):
-            target = toi * target + (1 - toi) * target
+            target.data.copy_(toi * model.data + (1 - toi) * target.data)
 
 # Team Model MERL
 class MERL(nn.Module):
