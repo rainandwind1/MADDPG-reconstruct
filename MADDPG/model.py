@@ -9,6 +9,7 @@ import random
 from param import *
 
 
+
 class Actor(nn.Module):
     def __init__(self, args):
         super(Actor, self).__init__()
@@ -84,13 +85,14 @@ class DDPG(nn.Module):
         return self.critic_net(inputs)
 
     def get_policy(self, inputs):
-        return self.actor_net(inputs)
+        policy_op = self.actor_net(inputs)
+        return F.softmax(policy_op, -1)
 
-    def get_action(self, inputs, vec = False):
-        policy_op = self.get_policy(inputs)
+    def get_action(self, inputs, epsilon = 0.):
+        policy_op = self.actor_net(inputs)
         noise = torch.rand_like(policy_op).to(self.device)
-        action = F.softmax(policy_op - torch.log(-torch.log(noise)), -1)        # 限制范围  合法动作
-        return action.data.numpy() if not vec else action
+        action = F.softmax(policy_op - torch.log(-torch.log(noise)) * epsilon, -1)        # 限制范围  合法动作
+        return action.data.numpy()
 
     
 class MADDPG(nn.Module):
@@ -110,13 +112,13 @@ class MADDPG(nn.Module):
             for raw_param, target_param in zip(agent_model.parameters(), target_model.parameters()):
                 target_param = TOI * raw_param + (1 - TOI) * target_param
 
-    def get_action(self, inputs):
+    def get_action(self, inputs, epsilon = 0.):
         action_ls = []
         for agent_i in range(self.n_agents):
-            action_ls.append(self.agent_models[agent_i].get_action(torch.FloatTensor(inputs[agent_i]).to(self.device)))
+            action_ls.append(self.agent_models[agent_i].get_action(torch.FloatTensor(inputs[agent_i]).to(self.device), epsilon))
         return action_ls
 
-    def train(self, gamma = GAMMA, batch_size = BATCH_SIZE):
+    def train(self, gamma = 0.98, batch_size = 32):
         # 各个更新
         for agent_i in range(self.n_agents):
             s, obs, a_ls, r, s_next, obs_next, done = self.agent_models[agent_i].buffer.sample_batch(batch_size)
@@ -125,7 +127,7 @@ class MADDPG(nn.Module):
             a_next_ls = []
             cur_idx = 0
             for i in range(self.n_agents):
-                a_next_ls.append(torch.FloatTensor(self.agent_models[i].get_action(s[:, cur_idx:cur_idx + self.agent_models[i].actor_net.input_size])).to(self.device))
+                a_next_ls.append(torch.FloatTensor(self.agent_models[i].get_policy(s[:, cur_idx:cur_idx + self.agent_models[i].actor_net.input_size])).to(self.device)).detach()
                 cur_idx += self.agent_models[i].actor_net.input_size
             q_target = r + gamma * self.target_models[agent_i].get_critic(torch.cat([s, torch.cat(a_next_ls, -1)], -1)) * (1 - done)
             
@@ -135,7 +137,7 @@ class MADDPG(nn.Module):
             nn.utils.clip_grad_norm_(self.agent_models[agent_i].critic_net.parameters(), 10)
             self.agent_models[agent_i].optimizer_critic.step()
 
-            a_vec = self.agent_models[agent_i].get_action(obs, vec = True)
+            a_vec = self.agent_models[agent_i].get_policy(obs)
             a = torch.FloatTensor(a_ls).to(self.device)
             a[:,agent_i,:] = a_vec
             a = a.view(batch_size, -1)
