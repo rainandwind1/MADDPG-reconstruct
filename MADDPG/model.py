@@ -109,8 +109,10 @@ class MADDPG(nn.Module):
 
     def soft_update_model(self):
         for agent_model, target_model in zip(self.agent_models, self.target_models):
-            for raw_param, target_param in zip(agent_model.parameters(), target_model.parameters()):
-                target_param = TOI * raw_param + (1 - TOI) * target_param
+            for raw, target in zip(agent_model.actor_net.parameters(), target_model.actor_net.parameters()):
+                target.data.copy_(TOI * raw.data + (1 - TOI) * target.data)
+            for raw, target in zip(agent_model.critic_net.parameters(), target_model.critic_net.parameters()):
+                target.data.copy_(TOI * raw.data + (1 - TOI) * target.data)
 
     def get_action(self, inputs, epsilon = 0.):
         action_ls = []
@@ -127,14 +129,14 @@ class MADDPG(nn.Module):
             a_next_ls = []
             cur_idx = 0
             for i in range(self.n_agents):
-                a_next_ls.append(torch.FloatTensor(self.agent_models[i].get_policy(s[:, cur_idx:cur_idx + self.agent_models[i].actor_net.input_size])).to(self.device)).detach()
+                a_next_ls.append(torch.FloatTensor(self.target_models[i].get_policy(s_next[:, cur_idx:cur_idx + self.agent_models[i].actor_net.input_size]).cpu().detach()).to(self.device))
                 cur_idx += self.agent_models[i].actor_net.input_size
-            q_target = r + gamma * self.target_models[agent_i].get_critic(torch.cat([s, torch.cat(a_next_ls, -1)], -1)) * (1 - done)
+            q_target = r + gamma * self.target_models[agent_i].get_critic(torch.cat([s_next, torch.cat(a_next_ls, -1)], -1)) * (1 - done)
             
             critic_loss = ((q_target.detach() - q_val) ** 2).mean()
             self.agent_models[agent_i].optimizer_critic.zero_grad()
             critic_loss.backward()
-            nn.utils.clip_grad_norm_(self.agent_models[agent_i].critic_net.parameters(), 10)
+            # nn.utils.clip_grad_norm_(self.agent_models[agent_i].critic_net.parameters(), 10)
             self.agent_models[agent_i].optimizer_critic.step()
 
             a_vec = self.agent_models[agent_i].get_policy(obs)
@@ -144,7 +146,7 @@ class MADDPG(nn.Module):
             policy_loss = -(self.agent_models[agent_i].get_critic(torch.cat([s, a], -1))).mean()
             self.agent_models[agent_i].optimizer_actor.zero_grad()
             policy_loss.backward()
-            nn.utils.clip_grad_norm_(self.agent_models[agent_i].actor_net.parameters(), 10)
+            # nn.utils.clip_grad_norm_(self.agent_models[agent_i].actor_net.parameters(), 10)
             self.agent_models[agent_i].optimizer_actor.step()
 
         self.soft_update_model()
